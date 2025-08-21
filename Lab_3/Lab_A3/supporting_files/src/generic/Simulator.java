@@ -1,0 +1,110 @@
+package generic;
+
+import processor.Clock;
+import processor.Processor;
+
+import java.io.BufferedInputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+
+public class Simulator {
+		
+	static Processor processor;
+	static boolean simulationComplete;
+	
+	public static void setupSimulation(String assemblyProgramFile, Processor p)
+	{
+		Simulator.processor = p;
+		loadProgram(assemblyProgramFile);
+		
+		simulationComplete = false;
+	}
+	
+	static void loadProgram(String assemblyProgramFile)
+	{
+		
+		try {
+			// create a reader
+			System.out.println(assemblyProgramFile);
+			FileInputStream file = new FileInputStream(assemblyProgramFile);
+			BufferedInputStream reader = new BufferedInputStream(file);
+
+			// read one byte at a time
+			int currentPC = 0; //Stores current PC value
+
+			int pointer; //used for reading lines from file
+			int linecounter = 0; //used to keep track of number of lines read from assembly file
+			byte[] oneline = new byte[4]; //temporary location to store an instruction from assembly file
+
+			int Nd = -1; //Bytes 0 to Nd of memory have global data stored in them;
+			int Nt = Nd + 1; //Bytes Nd + 1 to Nt of memory have text/code segment stored in them
+			//Memory from address 0 to Nd holds global data
+			//Memory from Nd + 1 to Nt holds instructions
+
+			//below code sets PC to the memory address of the first instruction
+			if((pointer = reader.read(oneline, 0, 4)) != -1){
+				currentPC = ByteBuffer.wrap(oneline).getInt();
+				int CP;
+				CP = currentPC;
+				processor.getRegisterFile().setProgramCounter(CP);
+			}
+
+			//writing global data to main memory
+			while (true) {
+
+				if(linecounter >= currentPC)
+					break;
+				pointer = reader.read(oneline, 0, 4);
+				Nd += 1;
+				int num = ByteBuffer.wrap(oneline).getInt(); //temporary integer to store one integer of global data
+				processor.getMainMemory().setWord(Nd, num);
+				Nt = Nd;
+				linecounter += 1;
+			}
+
+			//writing instructions to main memory
+			while (((pointer = reader.read(oneline, 0, 4)) != -1)) {
+
+				Nt += 1;
+				int ins = ByteBuffer.wrap(oneline).getInt(); //temporary integer to store one instruction
+				processor.getMainMemory().setWord(Nt, ins);
+				linecounter += 1;
+			}
+
+			processor.getRegisterFile().setValue(0, 0);
+			processor.getRegisterFile().setValue(1, 65535);
+			processor.getRegisterFile().setValue(2, 65535);
+
+			// close the reader
+			reader.close();
+
+		} catch (IOException ex) {
+			ex.printStackTrace();
+		}
+	}
+	
+	public static void simulate()
+	{
+		Statistics.setNumberOfInstructions(0);
+		Statistics.setNumberOfCycles(0);
+
+		while(simulationComplete == false)
+		{
+			processor.getIFUnit().performIF();
+			processor.getOFUnit().performOF();
+			processor.getEXUnit().performEX();
+			processor.getMAUnit().performMA();
+			processor.getRWUnit().performRW();
+			Clock.incrementClock();
+
+			Statistics.setNumberOfInstructions(Statistics.getNumberOfInstructions() + 1);
+			Statistics.setNumberOfCycles(Statistics.getNumberOfCycles() + 1);
+		}
+	}
+	
+	public static void setSimulationComplete(boolean value)
+	{
+		simulationComplete = value;
+	}
+}
